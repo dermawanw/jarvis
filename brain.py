@@ -5,7 +5,8 @@ from skills import SKILLS, NEEDS_CONFIRM
 MODEL = "qwen3:8b"
 SYSTEM = (
     "You are JARVIS, Daniel's personal assistant. "
-    "Use NOTES when relevant. Use tools for time and tasks. "
+    "Use NOTES when relevant. Use tools for time, tasks, searching or listing vault files, "
+    "and saving notes only when Daniel explicitly asks to remember something. "
     "Never make up tool results. Answer briefly and honestly. "
     "If you don't know, say so."
 )
