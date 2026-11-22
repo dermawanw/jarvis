@@ -9,13 +9,19 @@ import voice
 
 SAMPLE_RATE = 16000
 CHUNK = 1280  # 80 ms per frame (standar openWakeWord)
-WAKE_THRESHOLD = 0.35
+WAKE_THRESHOLD = 0.5
 
 # shortcut: ambang hening statis; naikkan ke 0.025-0.035 jika kipas laptop berisik
 SILENCE_THRESHOLD = 0.015
 END_SILENCE_CHUNKS = 15    # ~1.2 detik hening setelah bicara -> berhenti rekam
 START_TIMEOUT_CHUNKS = 50  # ~4.0 detik tanpa suara -> batal
 MAX_RECORD_CHUNKS = 125    # batas keras ~10 detik
+
+STT_PROMPT = (
+    "Natural spoken English commands for a personal assistant. "
+    "Examples: What time is it? Add task test neural network. "
+    "Complete task. Search my notes. Remember that."
+)
 
 
 def is_affirmative(text: str) -> bool:
@@ -27,6 +33,14 @@ def is_affirmative(text: str) -> bool:
         return False
     allow = {"yes", "yeah", "yep", "confirm", "confirmed", "sure", "ok", "okay", "proceed"}
     return bool(words & allow)
+
+
+def format_confirm_speech(name: str, args: dict) -> str:
+    label = name.replace("_", " ")
+    detail = ", ".join(str(v) for v in args.values() if str(v).strip())
+    if detail:
+        return f"Confirm {label}: {detail}? Say yes to proceed, or no to cancel."
+    return f"Confirm {label}? Say yes to proceed, or no to cancel."
 
 
 def collect_speech(
@@ -71,7 +85,12 @@ def record_command(max_chunks: int = MAX_RECORD_CHUNKS) -> np.ndarray:
 
 
 def transcribe_array(audio: np.ndarray) -> str:
-    segments, _ = voice.stt.transcribe(audio, language="en", vad_filter=True)
+    segments, _ = voice.stt.transcribe(
+        audio,
+        language="en",
+        vad_filter=True,
+        initial_prompt=STT_PROMPT,
+    )
     return " ".join(s.text for s in segments).strip()
 
 
@@ -89,9 +108,8 @@ def wait_for_wake_word(oww: Model):
 
 
 def voice_confirm(name: str, args: dict) -> bool:
-    label = name.replace("_", " ")
     print(f"  [confirm] {name}({args})")
-    voice.speak(f"Confirm {label}? Say yes to proceed, or no to cancel.")
+    voice.speak(format_confirm_speech(name, args))
     winsound.Beep(660, 120)
     audio = record_command(max_chunks=50)
     if audio.size == 0:

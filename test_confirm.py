@@ -16,7 +16,7 @@ def test_confirm_gate():
         patch.object(
             brain.ollama,
             "chat",
-            return_value=_fake_tool_response("add_task", {"task": "test", "due": "Nov 30"}),
+            return_value=_fake_tool_response("add_task", {"task": "test"}),
         ),
     ):
         hist = []
@@ -31,7 +31,7 @@ def test_confirm_gate():
 
         ok_reply = brain.resolve_pending(pending, approved=True, history=[])
         assert "Added: - [ ] test" in ok_reply
-        mock_add.assert_called_once_with(task="test", due="Nov 30")
+        mock_add.assert_called_once_with(task="test")
 
     print("PASS: confirmation gate works.")
 

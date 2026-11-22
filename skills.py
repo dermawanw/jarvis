@@ -35,15 +35,10 @@ def list_tasks() -> str:
         return f.read().strip() or "No tasks yet."
 
 
-def add_task(task: str, due: str = "") -> str:
-    """Add a new task to Daniel's task list.
-
-    Args:
-        task: task description
-        due: optional deadline, e.g. November 28
-    """
+def add_task(task: str) -> str:
+    """Add a new task to Daniel's task list (include deadline only if the user stated one)."""
     os.makedirs(os.path.dirname(TASKS), exist_ok=True)
-    line = f"- [ ] {task}" + (f" (due: {due})" if due else "")
+    line = f"- [ ] {task}"
     with open(TASKS, "a", encoding="utf-8") as f:
         f.write(line + "\n")
     index_vault()
