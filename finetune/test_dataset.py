@@ -33,10 +33,11 @@ def test_schema_matches_skills():
 
 def test_dataset_quality():
     rows = build_examples()
-    assert len(rows) >= 200, f"Expected >= 200 examples, got {len(rows)}"
+    assert len(rows) >= 300, f"Expected >= 300 examples, got {len(rows)}"
 
     tools_seen = set()
     non_tool_count = 0
+    multi_turn_count = 0
     param_map = {
         t["function"]["name"]: (
             set(t["function"]["parameters"]["properties"].keys()),
@@ -56,25 +57,33 @@ def test_dataset_quality():
         for phrase in BANNED_FLUFF:
             assert phrase not in final_lower, f"Row {i} has fluff: {phrase}"
 
-        has_tool = False
+        tool_calls_in_row = 0
         for m in msgs:
             for tc in m.get("tool_calls", []):
-                has_tool = True
+                tool_calls_in_row += 1
                 name = tc["function"]["name"]
                 args = tc["function"]["arguments"]
                 assert name in param_map, f"Unknown tool: {name}"
                 allowed, required = param_map[name]
                 assert set(args.keys()).issubset(allowed), f"Bad args for {name}: {args}"
                 assert required.issubset(set(args.keys())), f"Missing args for {name}: {args}"
+                if name == "add_task":
+                    assert not args["task"].lower().startswith("add task"), (
+                        f"Row {i} leaked command prefix: {args}"
+                    )
                 tools_seen.add(name)
-        if not has_tool:
+
+        if tool_calls_in_row == 0:
             non_tool_count += 1
+        elif tool_calls_in_row >= 2:
+            multi_turn_count += 1
 
     assert tools_seen == set(skills.SKILLS.keys()), f"Missing tools: {set(skills.SKILLS.keys()) - tools_seen}"
     assert non_tool_count >= 50, "Need enough non-tool examples to avoid over-calling tools"
+    assert multi_turn_count >= 50, f"Expected >= 50 multi-turn examples, got {multi_turn_count}"
 
 
 if __name__ == "__main__":
     test_schema_matches_skills()
     test_dataset_quality()
-    print("PASS: dataset matches skills.py and passes quality checks.")
+    print("PASS: 300-row dataset (including multi-turn) matches skills.py.")

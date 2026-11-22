@@ -34,8 +34,8 @@ TOOLS_SCHEMA = [
         "function": {
             "name": "add_task",
             "description": (
-                "Add a new task to Daniel's task list "
-                "(include deadline only if the user stated one)."
+                "Add a new task to Daniel's task list. "
+                "Pass only the task description (omit words like 'add task')."
             ),
             "parameters": {
                 "type": "object",
@@ -124,22 +124,25 @@ def _sys(notes: str = "(empty)") -> dict:
     return {"role": "system", "content": f"{SYSTEM}\n\nNOTES:\n{notes}"}
 
 
+def _tool_turn(user: str, name: str, args: dict, tool_out: str, final: str) -> list[dict]:
+    return [
+        {"role": "user", "content": user},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"type": "function", "function": {"name": name, "arguments": args}}
+            ],
+        },
+        {"role": "tool", "name": name, "content": tool_out},
+        {"role": "assistant", "content": final},
+    ]
+
+
 def _tool_example(user: str, name: str, args: dict, tool_out: str, final: str, notes: str = "(empty)") -> dict:
     return {
         "tools": TOOLS_SCHEMA,
-        "messages": [
-            _sys(notes),
-            {"role": "user", "content": user},
-            {
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [
-                    {"type": "function", "function": {"name": name, "arguments": args}}
-                ],
-            },
-            {"role": "tool", "name": name, "content": tool_out},
-            {"role": "assistant", "content": final},
-        ],
+        "messages": [_sys(notes)] + _tool_turn(user, name, args, tool_out, final),
     }
 
 
@@ -152,6 +155,117 @@ def _chat_example(user: str, final: str, notes: str = "(empty)") -> dict:
             {"role": "assistant", "content": final},
         ],
     }
+
+
+def _multi_turn_examples(distractor_notes: str) -> list[dict]:
+    rows: list[dict] = []
+
+    # A. 20 percakapan: 3x add_task berurutan dalam 1 sesi (target langsung bug Turn 3)
+    triplets = [
+        ("review calculus", "finish lab report due Friday", "read ROS 2 docs"),
+        ("test LoRA weights", "update CV due Monday", "clean tasks.md"),
+        ("study eigenvalues", "submit ML draft due Dec 2", "check VRAM usage"),
+        ("debug wake.py", "push GitHub commit", "review probability notes"),
+        ("refactor skills.py", "prepare demo due Wednesday", "test Kokoro audio"),
+        ("read attention paper", "write unit tests", "check CUDA drivers"),
+        ("practice C pointers", "finish Gazebo URDF due Thursday", "backup vault"),
+        ("benchmark Whisper", "email lecturer due tomorrow", "organize Projects folder"),
+        ("review gradient descent", "test Gradio UI", "update README"),
+        ("tune silence threshold", "finish assignment due Sunday", "check Ollama logs"),
+        ("review CNN layers", "export GGUF due tonight", "verify 100% GPU"),
+        ("test ChromaDB query", "read MuJoCo guide", "finish physics exercises"),
+        ("clean finetune folder", "prepare internship portfolio due Dec 5", "check disk space"),
+        ("review Bayes theorem", "fix shape keys in Blender", "test voice confirm"),
+        ("study Docker basics", "submit proposal due Dec 3", "check git status"),
+        ("review SQL joins", "finish data cleaning", "read Qwen3 template docs"),
+        ("test search_notes", "update Profile.md", "plan semester 6 prep"),
+        ("review backprop math", "complete robotics lab due Tuesday", "test list_files"),
+        ("check Python 3.11 pin", "write project summary", "review RAG chunk size"),
+        ("review matrix rank", "finish homework due Saturday", "test complete_task"),
+    ]
+    prefixes = [
+        ("Add task {}", "Add task {}", "Add task {}"),
+        ("Add a task: {}", "New task: {}", "Add task {}"),
+        ("Put {} on my task list", "Add task {}", "Create task {}"),
+        ("Add task {}", "Add to my tasks: {}", "Add task {}"),
+    ]
+    for i, (t1, t2, t3) in enumerate(triplets):
+        p1, p2, p3 = prefixes[i % len(prefixes)]
+        msgs = [_sys(distractor_notes)]
+        for p, t in ((p1, t1), (p2, t2), (p3, t3)):
+            msgs.extend(
+                _tool_turn(p.format(t), "add_task", {"task": t}, f"Added: - [ ] {t}", f"Added '{t}'.")
+            )
+        rows.append({"tools": TOOLS_SCHEMA, "messages": msgs})
+
+    # B. 20 percakapan: 3 tool berbeda berurutan (add -> list -> complete / time -> add -> search)
+    workflows = [
+        [
+            ("What time is it?", "get_time", {}, "Sunday, November 22 2026 23:15", "It's Sunday, November 22, 2026, 23:15."),
+            ("Add task review LoRA", "add_task", {"task": "review LoRA"}, "Added: - [ ] review LoRA", "Added 'review LoRA'."),
+            ("What tasks do I have?", "list_tasks", {}, "- [ ] review LoRA", "Open task: review LoRA."),
+        ],
+        [
+            ("Add task test Whisper", "add_task", {"task": "test Whisper"}, "Added: - [ ] test Whisper", "Added 'test Whisper'."),
+            ("Add task test Kokoro", "add_task", {"task": "test Kokoro"}, "Added: - [ ] test Kokoro", "Added 'test Kokoro'."),
+            ("Show my tasks.", "list_tasks", {}, "- [ ] test Whisper\n- [ ] test Kokoro", "Open tasks:\n- test Whisper\n- test Kokoro"),
+        ],
+        [
+            ("Show my tasks.", "list_tasks", {}, "- [ ] update README\n- [ ] test RAG", "Open tasks:\n- update README\n- test RAG"),
+            ("Mark README done", "complete_task", {"keyword": "README"}, "Completed: - [x] update README", "Marked done: update README."),
+            ("What tasks are left?", "list_tasks", {}, "- [ ] test RAG", "Open task: test RAG."),
+        ],
+        [
+            ("Search my notes for GPU", "search_notes", {"query": "GPU"}, "[Personal Information/Profile.md]\nRTX 4060 8GB.", "From Profile.md: RTX 4060 8GB."),
+            ("Remember that Q4_K_M uses 5.4GB VRAM", "remember_note", {"text": "Q4_K_M uses 5.4GB VRAM"}, "Saved to 2026-11-22.md: Q4_K_M uses 5.4GB VRAM", "Saved to today's Daily Notes."),
+            ("Add task benchmark 8B speed", "add_task", {"task": "benchmark 8B speed"}, "Added: - [ ] benchmark 8B speed", "Added 'benchmark 8B speed'."),
+        ],
+        [
+            ("List files in Projects.", "list_files", {"folder": "Projects"}, "Projects/jarvis.md\nProjects/robotics.md", "In Projects:\n- Projects/jarvis.md\n- Projects/robotics.md"),
+            ("Search notes for ROS 2", "search_notes", {"query": "ROS 2"}, "[Projects/robotics.md]\nLearning ROS 2 basics.", "From Projects/robotics.md: Learning ROS 2 basics."),
+            ("Add task practice ROS 2 topics", "add_task", {"task": "practice ROS 2 topics"}, "Added: - [ ] practice ROS 2 topics", "Added 'practice ROS 2 topics'."),
+        ],
+    ]
+    for i in range(20):
+        wf = workflows[i % len(workflows)]
+        msgs = [_sys(distractor_notes)]
+        for u, name, args, out, final in wf:
+            msgs.extend(_tool_turn(u, name, args, out, final))
+        rows.append({"tools": TOOLS_SCHEMA, "messages": msgs})
+
+    # C. 20 percakapan: campuran chat biasa + 2x tool berurutan + chat/RAG
+    profile_note = (
+        "[Personal Information/Profile.md]\n"
+        "Laptop: ASUS TUF A16, RTX 4060 8GB, 32GB RAM."
+    )
+    mixed_pairs = [
+        ("Hey JARVIS.", "Online. What do you need?", "review transformers", "finish lab due Monday"),
+        ("Hello.", "Ready. How can I help?", "check GPU temps", "read Gazebo docs"),
+        ("Status check.", "All local modules ready.", "test wake word", "update internship CV"),
+        ("Hey JARVIS.", "Ready.", "study linear algebra", "push git changes"),
+        ("Hi JARVIS.", "Online. What's next?", "clean memory_db", "review C structs"),
+    ]
+    for i in range(20):
+        greet, greet_reply, t1, t2 = mixed_pairs[i % len(mixed_pairs)]
+        msgs = [
+            _sys(profile_note),
+            {"role": "user", "content": greet},
+            {"role": "assistant", "content": greet_reply},
+        ]
+        msgs.extend(_tool_turn(f"Add task {t1}", "add_task", {"task": t1}, f"Added: - [ ] {t1}", f"Added '{t1}'."))
+        msgs.extend(_tool_turn(f"Add task {t2}", "add_task", {"task": t2}, f"Added: - [ ] {t2}", f"Added '{t2}'."))
+        if i % 2 == 0:
+            msgs.extend([
+                {"role": "user", "content": "What laptop do I have?"},
+                {"role": "assistant", "content": "ASUS TUF A16 with an RTX 4060 8GB and 32GB RAM."},
+            ])
+        else:
+            msgs.extend(
+                _tool_turn("What time is it?", "get_time", {}, "Sunday, November 22 2026 23:20", "It's Sunday, November 22, 2026, 23:20.")
+            )
+        rows.append({"tools": TOOLS_SCHEMA, "messages": msgs})
+
+    return rows
 
 
 def build_examples() -> list[dict]:
@@ -583,6 +697,9 @@ def build_examples() -> list[dict]:
     ]
     for prompt, reply in direct_chat:
         rows.append(_chat_example(prompt, reply, notes="(empty)"))
+
+    # 12. Multi-turn conversations (2-3 tool calls per session) - 60
+    rows.extend(_multi_turn_examples(distractor_notes))
 
     random.Random(42).shuffle(rows)
     return rows

@@ -2,7 +2,7 @@ import ollama
 from memory import index_vault, search, save_note
 from skills import SKILLS, NEEDS_CONFIRM
 
-MODEL = "qwen3:8b"
+MODEL = "jarvis"
 SYSTEM = (
     "You are JARVIS, Daniel's personal assistant. "
     "Use NOTES only to answer questions. When calling tools, pass ONLY arguments "
@@ -21,6 +21,7 @@ def execute_tool(name: str, args: dict) -> str:
     try:
         return str(fn(**args))
     except Exception as e:
+        print(f"  [tool error] {e}")
         return f"Error: {e}"
 
 
@@ -28,21 +29,32 @@ def resolve_pending(pending: dict, approved: bool, history: list[dict]) -> str:
     if approved:
         result = execute_tool(pending["name"], pending["args"])
         reply = f"Done. {result}"
+        history.extend([
+            {"role": "user", "content": pending["user"]},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"function": {"name": pending["name"], "arguments": pending["args"]}}
+                ],
+            },
+            {"role": "tool", "content": result, "tool_name": pending["name"]},
+            {"role": "assistant", "content": reply},
+        ])
     else:
         reply = "Okay, cancelled. Nothing was changed."
-    history.extend([
-        {"role": "user", "content": pending["user"]},
-        {"role": "assistant", "content": reply},
-    ])
+        history.extend([
+            {"role": "user", "content": pending["user"]},
+            {"role": "assistant", "content": reply},
+        ])
     return reply
 
 
 def chat_turn(user: str, history: list[dict], confirm_fn=None) -> tuple[str, dict | None]:
     context = "\n---\n".join(f"[{s}]\n{d}" for d, s in search(user))
     system_prompt = f"{SYSTEM}\n\nNOTES:\n{context or '(empty)'}"
-    msgs = [{"role": "system", "content": system_prompt}] + history + [
-        {"role": "user", "content": user},
-    ]
+    turn_msgs: list[dict] = [{"role": "user", "content": user}]
+    msgs: list[dict] = [{"role": "system", "content": system_prompt}] + history + turn_msgs
 
     r = None
     for _ in range(5):
@@ -51,10 +63,27 @@ def chat_turn(user: str, history: list[dict], confirm_fn=None) -> tuple[str, dic
             messages=msgs,
             tools=list(SKILLS.values()),
             think=False,
+            options={"temperature": 0.1},
         )
-        msgs.append(r.message)
         if not r.message.tool_calls:
             break
+
+        assistant_call_msg = {
+            "role": "assistant",
+            "content": r.message.content or "",
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": dict(call.function.arguments or {}),
+                    }
+                }
+                for call in r.message.tool_calls
+            ],
+        }
+        msgs.append(assistant_call_msg)
+        turn_msgs.append(assistant_call_msg)
+
         for call in r.message.tool_calls:
             name = call.function.name
             args = dict(call.function.arguments or {})
@@ -72,17 +101,17 @@ def chat_turn(user: str, history: list[dict], confirm_fn=None) -> tuple[str, dic
                     ])
                     return reply, None
             result = execute_tool(name, args)
-            msgs.append({
+            tool_msg = {
                 "role": "tool",
                 "content": result,
                 "tool_name": name,
-            })
+            }
+            msgs.append(tool_msg)
+            turn_msgs.append(tool_msg)
 
     reply = (r.message.content or "") if r else ""
-    history.extend([
-        {"role": "user", "content": user},
-        {"role": "assistant", "content": reply},
-    ])
+    turn_msgs.append({"role": "assistant", "content": reply})
+    history.extend(turn_msgs)
     return reply, None
 
 

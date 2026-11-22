@@ -8,6 +8,10 @@ def _fake_tool_response(name: str, args: dict):
     return SimpleNamespace(message=SimpleNamespace(content="", tool_calls=[call]))
 
 
+def _fake_text_response(text: str):
+    return SimpleNamespace(message=SimpleNamespace(content=text, tool_calls=None))
+
+
 def test_confirm_gate():
     mock_add = MagicMock(return_value="Added: - [ ] test")
     mock_chat = MagicMock(return_value=_fake_tool_response("add_task", {"task": "test"}))
@@ -31,11 +35,35 @@ def test_confirm_gate():
         assert cancel_reply == "Okay, cancelled. Nothing was changed."
         mock_add.assert_not_called()
 
-        ok_reply = brain.resolve_pending(pending, approved=True, history=[])
+        ok_hist = []
+        ok_reply = brain.resolve_pending(pending, approved=True, history=ok_hist)
         assert "Added: - [ ] test" in ok_reply
         mock_add.assert_called_once_with(task="test")
+        assert any("tool_calls" in m for m in ok_hist)
+        assert any(m.get("role") == "tool" for m in ok_hist)
 
-    print("PASS: confirmation gate and single-system prompt work.")
+    # Pastikan chat_turn menyimpan jejak tool_calls + tool response ke history
+    mock_add.reset_mock()
+    seq_chat = MagicMock(
+        side_effect=[
+            _fake_tool_response("add_task", {"task": "alpha"}),
+            _fake_text_response("Added task: alpha."),
+        ]
+    )
+    with (
+        patch.dict(brain.SKILLS, {"add_task": mock_add}),
+        patch.object(brain, "search", return_value=[]),
+        patch.object(brain.ollama, "chat", seq_chat),
+    ):
+        multi_hist = []
+        reply, pending = brain.chat_turn(
+            "Add task alpha", multi_hist, confirm_fn=lambda *_: True
+        )
+        assert pending is None and "alpha" in reply
+        assert [m["role"] for m in multi_hist] == ["user", "assistant", "tool", "assistant"]
+        assert multi_hist[1]["tool_calls"][0]["function"]["name"] == "add_task"
+
+    print("PASS: confirmation gate, single-system prompt, and tool history work.")
 
 
 if __name__ == "__main__":
