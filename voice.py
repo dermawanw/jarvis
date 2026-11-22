@@ -1,5 +1,6 @@
 import queue
 import warnings
+
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -11,6 +12,29 @@ from kokoro import KPipeline
 print("  [voice] loading models...")
 stt = WhisperModel("small", device="cpu", compute_type="int8")
 tts = KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M")
+
+
+def transcribe_file(audio_path: str) -> str:
+    if not audio_path:
+        return ""
+    segments, _ = stt.transcribe(audio_path, language="en", vad_filter=True)
+    return " ".join(s.text for s in segments).strip()
+
+
+def synthesize(text: str) -> tuple[int, np.ndarray] | None:
+    if not text.strip():
+        return None
+    chunks = []
+    for _, _, audio in tts(text, voice="af_heart"):
+        if audio is None:
+            continue
+        arr = audio.numpy() if hasattr(audio, "numpy") else np.asarray(audio)
+        chunks.append(arr)
+    if not chunks:
+        return None
+    full = np.concatenate(chunks)
+    pcm16 = (np.clip(full, -1.0, 1.0) * 32767).astype(np.int16)
+    return (24000, pcm16)
 
 
 def listen() -> str:
@@ -29,9 +53,9 @@ def listen() -> str:
 
 
 def speak(text: str):
-    for _, _, audio in tts(text, voice="af_heart"):
-        if audio is None:
-            continue
-        audio = audio.numpy() if hasattr(audio, "numpy") else audio
-        sd.play(audio, 24000)
-        sd.wait()
+    res = synthesize(text)
+    if res is None:
+        return
+    sr, pcm16 = res
+    sd.play(pcm16, sr)
+    sd.wait()
