@@ -5,8 +5,10 @@ from skills import SKILLS, NEEDS_CONFIRM
 MODEL = "qwen3:8b"
 SYSTEM = (
     "You are JARVIS, Daniel's personal assistant. "
-    "Use NOTES when relevant. Use tools for time, tasks, searching or listing vault files, "
-    "and saving notes only when Daniel explicitly asks to remember something. "
+    "Use NOTES only to answer questions. When calling tools, pass ONLY arguments "
+    "explicitly stated in the user's current message. "
+    "Use tools for time, tasks, searching or listing vault files, and saving notes "
+    "only when Daniel explicitly asks to remember something. "
     "Never make up tool results. Answer briefly and honestly. "
     "If you don't know, say so."
 )
@@ -37,8 +39,8 @@ def resolve_pending(pending: dict, approved: bool, history: list[dict]) -> str:
 
 def chat_turn(user: str, history: list[dict], confirm_fn=None) -> tuple[str, dict | None]:
     context = "\n---\n".join(f"[{s}]\n{d}" for d, s in search(user))
-    msgs = [{"role": "system", "content": SYSTEM}] + history + [
-        {"role": "system", "content": f"NOTES:\n{context or '(empty)'}"},
+    system_prompt = f"{SYSTEM}\n\nNOTES:\n{context or '(empty)'}"
+    msgs = [{"role": "system", "content": system_prompt}] + history + [
         {"role": "user", "content": user},
     ]
 
