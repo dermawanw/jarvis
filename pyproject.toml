@@ -1,7 +1,7 @@
 [project]
 name = "jarvis"
 version = "0.1.0"
-description = "Add your description here"
+description = "Local voice and Obsidian RAG assistant powered by fine-tuned Qwen3-8B"
 readme = "README.md"
 authors = [
     { name = "dermawanw", email = "rizaldermawanw@gmail.com" }
@@ -17,10 +17,3 @@ dependencies = [
     "openwakeword>=0.6.0",
     "sounddevice>=0.5.6",
 ]
-
-[project.scripts]
-jarvis = "jarvis:main"
-
-[build-system]
-requires = ["uv_build>=0.13.9,<0.14.0"]
-build-backend = "uv_build"
