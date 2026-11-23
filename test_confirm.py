@@ -42,7 +42,7 @@ def test_confirm_gate():
         assert any("tool_calls" in m for m in ok_hist)
         assert any(m.get("role") == "tool" for m in ok_hist)
 
-    # Pastikan chat_turn menyimpan jejak tool_calls + tool response ke history
+    # chat_turn menyimpan jejak tool_calls + tool response ke history
     mock_add.reset_mock()
     seq_chat = MagicMock(
         side_effect=[

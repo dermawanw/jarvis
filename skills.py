@@ -36,7 +36,7 @@ def list_tasks() -> str:
 
 
 def add_task(task: str) -> str:
-    """Add a new task to Daniel's task list. Pass the entire task text in the single 'task' argument."""
+    """Add a new task to Daniel's task list. Pass only the task description (omit words like 'add task')."""
     os.makedirs(os.path.dirname(TASKS), exist_ok=True)
     line = f"- [ ] {task}"
     with open(TASKS, "a", encoding="utf-8") as f:
